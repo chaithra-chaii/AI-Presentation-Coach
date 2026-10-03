@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>AI Presentation Coach</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- =================================================
+         HEADER
+    ================================================== -->
+
+    <header class="top-header">
+
+        <div class="brand">
+
+            <div class="robot-icon">
+                🤖
+            </div>
+
+            <div>
+                <h1>AI Presentation Coach</h1>
+
+                <p>
+                    Better Presentations · Bigger Impact
+                </p>
+            </div>
+
+        </div>
+
+        <div class="session-info">
+            Speech + Speech-to-Text
+        </div>
+
+    </header>
+
+
+
+    <!-- =================================================
+         MAIN LAYOUT
+    ================================================== -->
+
+    <div class="main-layout">
+
+
+        <!-- =================================================
+             SIDEBAR
+        ================================================== -->
+
+        <aside class="sidebar">
+
+            <div class="side-item active">
+                🏠
+                <span>Dashboard</span>
+            </div>
+
+            <div class="side-item">
+                🕘
+                <span>History</span>
+            </div>
+
+            <div class="side-item">
+                ⚙️
+                <span>Settings</span>
+            </div>
+
+            <div class="quote">
+
+                <p>
+                    "Progress<br>
+                    not perfection."
+                </p>
+
+            </div>
+
+        </aside>
+
+
+
+        <!-- =================================================
+             MAIN CONTENT
+        ================================================== -->
+
+        <main class="content">
+
+
+            <!-- PAGE TITLE -->
+
+            <section class="page-title">
+
+                <div>
+
+                    <h2>
+                        Speech Analysis
+                    </h2>
+
+                    <p>
+                        Record your presentation and
+                        receive speech analysis.
+                    </p>
+
+                </div>
+
+
+                <div
+                    id="status"
+                    class="status ready">
+
+                    ● Ready
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 CONTROL PANEL
+            ================================================== -->
+
+            <section class="control-panel">
+
+                <button
+                    id="startBtn"
+                    class="btn start-btn">
+
+                    🎤 Start Presentation
+
+                </button>
+
+
+                <button
+                    id="pauseBtn"
+                    class="btn pause-btn"
+                    disabled>
+
+                    ⏸ Pause
+
+                </button>
+
+
+                <button
+                    id="resumeBtn"
+                    class="btn resume-btn"
+                    disabled>
+
+                    ▶ Resume
+
+                </button>
+
+
+                <button
+                    id="stopBtn"
+                    class="btn stop-btn"
+                    disabled>
+
+                    ⏹ Stop
+
+                </button>
+
+
+                <div class="language-selection">
+
+                    <label>
+                        Language
+                    </label>
+
+                    <select id="languageSelect">
+
+                        <option value="en-US">
+                            English (US)
+                        </option>
+
+                        <option value="en-GB">
+                            English (UK)
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 METRICS
+            ================================================== -->
+
+            <section class="metrics-grid">
+
+
+                <!-- Speaking Time -->
+
+                <div class="metric-card">
+
+                    <div class="metric-icon blue">
+                        ⏱️
+                    </div>
+
+                    <p>
+                        Speaking Time
+                    </p>
+
+                    <h3 id="speakingTime">
+                        00:00
+                    </h3>
+
+                    <span>
+                        Active presentation time
+                    </span>
+
+                </div>
+
+
+
+                <!-- WPM -->
+
+                <div class="metric-card">
+
+                    <div class="metric-icon yellow">
+                        ⚡
+                    </div>
+
+                    <p>
+                        Speaking Speed
+                    </p>
+
+                    <h3>
+
+                        <span id="wpm">
+                            0
+                        </span>
+
+                        WPM
+
+                    </h3>
+
+                    <span>
+                        Words per minute
+                    </span>
+
+                </div>
+
+
+
+                <!-- PAUSES -->
+
+                <div class="metric-card">
+
+                    <div class="metric-icon purple">
+                        ⏸️
+                    </div>
+
+                    <p>
+                        Long Pauses
+                    </p>
+
+                    <h3 id="pauseCount">
+                        0
+                    </h3>
+
+                    <span>
+                        Pauses longer than 2 sec
+                    </span>
+
+                </div>
+
+
+
+                <!-- FILLER WORDS -->
+
+                <div class="metric-card">
+
+                    <div class="metric-icon pink">
+                        🔁
+                    </div>
+
+                    <p>
+                        Filler Words
+                    </p>
+
+                    <h3 id="fillerCount">
+                        0
+                    </h3>
+
+                    <span>
+                        Detected filler words
+                    </span>
+
+                </div>
+
+
+
+                <!-- LANGUAGE -->
+
+                <div class="metric-card">
+
+                    <div class="metric-icon green">
+                        🇬🇧
+                    </div>
+
+                    <p>
+                        Language
+                    </p>
+
+                    <h3>
+                        English
+                    </h3>
+
+                    <span>
+                        English recognition
+                    </span>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 TRANSCRIPT + ANALYSIS
+            ================================================== -->
+
+            <section class="two-column">
+
+
+                <!-- =================================================
+                     TRANSCRIPT
+                ================================================== -->
+
+                <div class="panel transcript-panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <h2>
+                                📝 Live Transcript
+                            </h2>
+
+                            <p>
+                                Speech converted into text
+                                with timestamps.
+                            </p>
+
+                        </div>
+
+
+                        <button
+                            id="clearBtn"
+                            class="clear-btn">
+
+                            Clear
+
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="transcript"
+                        class="transcript">
+
+                        <div class="empty-message">
+
+                            Your presentation transcript
+                            will appear here...
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- =================================================
+                     ANALYSIS
+                ================================================== -->
+
+                <div class="panel analysis-panel">
+
+
+                    <h2>
+                        🔁 Filler Words
+                    </h2>
+
+                    <p class="description">
+
+                        Frequently used filler words.
+
+                    </p>
+
+
+                    <div
+                        id="fillerList"
+                        class="list-container">
+
+                        <div class="empty-message">
+
+                            No filler words detected.
+
+                        </div>
+
+                    </div>
+
+
+
+                    <h2 class="section-gap">
+
+                        ⏸️ Detected Pauses
+
+                    </h2>
+
+
+                    <p class="description">
+
+                        Pauses longer than 2 seconds.
+
+                    </p>
+
+
+                    <div
+                        id="pauseList"
+                        class="list-container">
+
+                        <div class="empty-message">
+
+                            No long pauses detected.
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 RECORDING
+            ================================================== -->
+
+            <section class="panel recording-panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            🎧 Recording Playback
+                        </h2>
+
+                        <p>
+                            Play your presentation recording.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <audio
+                    id="audioPlayer"
+                    controls>
+                </audio>
+
+
+                <p
+                    id="recordingInfo"
+                    class="recording-info">
+
+                    No recording available.
+
+                </p>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 BACKEND JSON
+            ================================================== -->
+
+            <section class="panel backend-panel">
+
+                <h2>
+                    📤 Backend Data
+                </h2>
+
+                <p>
+                    Speech analysis data generated
+                    for the backend.
+                </p>
+
+
+                <pre id="jsonOutput">
+{}
+                </pre>
+
+            </section>
+
+        </main>
+
+    </div>
+
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>

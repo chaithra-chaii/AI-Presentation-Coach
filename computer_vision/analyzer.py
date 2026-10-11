@@ -37,9 +37,16 @@ class CVAnalyzer:
        
         eye = self.eye_contact.analyze_frame(frame_bgr)
         posture = self.posture.analyze_frame(frame_bgr)
-        gestures = self.gestures.analyze_frame(frame_bgr)
+        face_box = None
+        face_pts = eye.get("landmarks")
+        if face_pts:
+            xs = [p[0] for p in face_pts]
+            ys = [p[1] for p in face_pts]
+            face_box = (min(xs), min(ys), max(xs), max(ys))
+        gestures = self.gestures.analyze_frame(frame_bgr, face_box=face_box)
 
         if not include_drawing_data:
+            eye.pop("landmarks", None)
             posture.pop("points", None)
             gestures.pop("landmarks", None)
 
@@ -98,7 +105,8 @@ def run_demo():
                                           result["posture"], result["gestures"])
                 s = cv_analyzer.summary()
 
-                
+                for x, y in (eye.get("landmarks") or []):
+                    cv2.circle(frame, (int(x * w), int(y * h)), 1, (255, 255, 0), -1)
                 for hand in gestures.get("landmarks", []):
                     for x, y in hand:
                         cv2.circle(frame, (int(x * w), int(y * h)), 3, green, -1)

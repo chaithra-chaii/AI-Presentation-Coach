@@ -154,6 +154,8 @@ class EyeContactAnalyzer:
         self._prev_ts = ts
 
         v_score, pitch_diff = 0.0, 0.0
+        points = None
+        shapes = None
         if not result.face_landmarks:
             state = "no_face"
         else:
@@ -161,6 +163,9 @@ class EyeContactAnalyzer:
             looking, v_score, pitch_diff = self._check(
                 result.face_landmarks[0], blend)
             state = "looking" if looking else "away"
+            points = [(p.x, p.y) for p in result.face_landmarks[0]]
+            shapes = ({b.category_name: b.score for b in blend}
+                      if blend else {})
 
         self._durations[state] += dt
 
@@ -171,6 +176,8 @@ class EyeContactAnalyzer:
             "calibrated": self.calibrated,
             "eye_vertical_score": round(v_score, 3),
             "head_tilt_diff": round(pitch_diff, 3),
+            "landmarks": points,
+            "blendshapes": shapes,
         }
 
     def summary(self):

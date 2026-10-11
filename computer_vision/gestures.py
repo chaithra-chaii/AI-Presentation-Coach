@@ -1,358 +1,209 @@
+import json
+import math
 import os
 import time
-import math
-from collections import deque
 
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(
-    BASE_DIR, "models", "hand_landmarker.task"
+DEFAULT_MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "models", "hand_landmarker.task"
 )
 
-WINDOW_SECONDS = 1.5
-EMA_ALPHA = 0.35
-
-STILL_SPEED = 0.06
-GESTURE_SPEED = 0.12
-REPETITIVE_SPEED = 0.30
-
-MIN_MOVEMENT = 0.006
-MIN_HISTORY_POINTS = 6
-
-STATES = {
-    "none": ("Hands not visible", (0, 165, 255)),
-    "still": ("Hands relatively still", (255, 200, 0)),
-    "gesturing": ("Active hand movement", (0, 180, 0)),
-    "fidgeting": ("Repetitive movement detected", (0, 0, 255)),
+STATES = ("none", "still", "gesturing", "fidgeting")
+LABELS = {
+    "none": "Hands not visible",
+    "still": "Hands still",
+    "gesturing": "Gesturing - good",
+    "fidgeting": "Too much movement",
 }
 
+# If two frames are further apart than this, movement between them is ignored
+MAX_GAP_SECONDS = 0.5
 
-def analyze_history(history):
-    """
-    Returns:
-        speed: normalized wrist movement per second
-        reversals: significant direction changes
-        efficiency: net distance / total path distance
-    """
 
-    if len(history) < MIN_HISTORY_POINTS:
-        return 0.0, 0, 1.0
+class GestureAnalyzer:
+    """Tracks hand visibility and movement speed across a session."""
 
-    points = list(history)
-    duration = points[-1][0] - points[0][0]
+    def __init__(self, model_path=DEFAULT_MODEL_PATH, still_limit=0.05,
+                 fidget_limit=0.90, smoothing=0.3, num_hands=2):
+        """
+        still_limit  : speed below this = hands still   (screen widths / second)
+        fidget_limit : speed above this = too much movement
+        smoothing    : 0..1, higher reacts faster, lower is smoother
+        """
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(
+                f"Hand model not found at: {model_path}\n"
+                "Download hand_landmarker.task into the models folder."
+            )
+        self.still_limit = still_limit
+        self.fidget_limit = fidget_limit
+        self.smoothing = smoothing
 
-    if duration <= 0:
-        return 0.0, 0, 1.0
-
-    path_length = 0.0
-    directions = []
-
-    for i in range(1, len(points)):
-        dx = points[i][1] - points[i - 1][1]
-        dy = points[i][2] - points[i - 1][2]
-
-        distance = math.hypot(dx, dy)
-        path_length += distance
-
-        if distance >= MIN_MOVEMENT:
-            directions.append((dx / distance, dy / distance))
-
-    speed = path_length / duration
-
-    net_dx = points[-1][1] - points[0][1]
-    net_dy = points[-1][2] - points[0][2]
-    net_distance = math.hypot(net_dx, net_dy)
-
-    efficiency = net_distance / max(path_length, 1e-6)
-
-    reversals = 0
-
-    for i in range(1, len(directions)):
-        previous = directions[i - 1]
-        current = directions[i]
-
-        dot = (
-            previous[0] * current[0]
-            + previous[1] * current[1]
+        options = vision.HandLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=model_path),
+            running_mode=vision.RunningMode.VIDEO,
+            num_hands=num_hands,
         )
+        self._landmarker = vision.HandLandmarker.create_from_options(options)
 
-        if dot < -0.25:
-            reversals += 1
+        # MediaPipe needs timestamps that always increase, so these are
+        # never reset, even when a new session starts.
+        self._origin = time.monotonic()
+        self._last_ts = -1
+        self.reset()
 
-    return speed, reversals, efficiency
+    def reset(self):
+        """Start a new session (clears the summary)."""
+        self._durations = {s: 0.0 for s in STATES}
+        self._prev_centroid = None
+        self._prev_count = 0
+        self._prev_ts = None
+        self._speed = 0.0
 
+    def analyze_frame(self, frame_bgr, timestamp_ms=None):
+        """
+        Analyse one frame.
+        frame_bgr    : image as a numpy array (OpenCV format)
+        timestamp_ms : time of the frame in milliseconds (optional)
+        Returns a dict: state, label, hands_count, speed, landmarks
+        """
+        if frame_bgr is None or getattr(frame_bgr, "size", 0) == 0:
+            raise ValueError("analyze_frame received an empty frame")
 
-def classify_hand(speed, reversals, efficiency):
-    """
-    Classifies observed movement patterns.
-    It does not diagnose nervousness or intent.
-    """
+        if timestamp_ms is None:
+            timestamp_ms = int((time.monotonic() - self._origin) * 1000)
+        timestamp_ms = max(int(timestamp_ms), self._last_ts + 1)
+        self._last_ts = timestamp_ms
 
-    if speed < STILL_SPEED:
-        return "still"
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
+        hands = result.hand_landmarks or []
 
-    repetitive = (
-        speed >= REPETITIVE_SPEED
-        and reversals >= 3
-        and efficiency < 0.45
-    )
+        # Time since the previous analysed frame
+        dt = 0.0
+        if self._prev_ts is not None:
+            dt = (timestamp_ms - self._prev_ts) / 1000.0
+            if dt > MAX_GAP_SECONDS:
+                self._prev_centroid = None   # gap too big to measure movement
+                dt = MAX_GAP_SECONDS
+        self._prev_ts = timestamp_ms
 
-    if repetitive:
-        return "fidgeting"
+        if not hands:
+            self._prev_centroid, self._prev_count = None, 0
+            self._speed = 0.0
+            state = "none"
+        else:
+            cx = sum(h[0].x for h in hands) / len(hands)   # wrist positions
+            cy = sum(h[0].y for h in hands) / len(hands)
 
-    if speed >= GESTURE_SPEED:
-        return "gesturing"
+            # Only measure speed if the same number of hands was seen before
+            if (self._prev_centroid is not None
+                    and len(hands) == self._prev_count and dt > 0):
+                dist = math.hypot(cx - self._prev_centroid[0],
+                                  cy - self._prev_centroid[1])
+                inst = dist / dt
+                self._speed = (self.smoothing * inst
+                               + (1 - self.smoothing) * self._speed)
 
-    return "still"
+            self._prev_centroid, self._prev_count = (cx, cy), len(hands)
 
-
-def main():
-
-    if not os.path.isfile(MODEL_PATH):
-        print("ERROR: Hand landmark model not found.")
-        print("Expected location:")
-        print(MODEL_PATH)
-        return
-
-    options = vision.HandLandmarkerOptions(
-        base_options=mp_python.BaseOptions(
-            model_asset_path=MODEL_PATH
-        ),
-        running_mode=vision.RunningMode.VIDEO,
-        num_hands=2,
-        min_hand_detection_confidence=0.5,
-        min_hand_presence_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
-
-    landmarker = vision.HandLandmarker.create_from_options(
-        options
-    )
-
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        print("ERROR: Could not open webcam.")
-        landmarker.close()
-        return
-
-    
-    histories = {}
-    smooth_positions = {}
-    previous_states = {}
-
-    counts = {name: 0 for name in STATES}
-    total_frames = 0
-    start = time.monotonic()
-
-    try:
-        while True:
-            ret, frame = cap.read()
-
-            if not ret:
-                print("Could not read webcam frame.")
-                break
-
-            height, width = frame.shape[:2]
-            now = time.monotonic() - start
-
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            image = mp.Image(
-                image_format=mp.ImageFormat.SRGB,
-                data=rgb,
-            )
-
-            result = landmarker.detect_for_video(
-                image, int(now * 1000)
-            )
-
-            visible_states = []
-            active_ids = set()
-
-            for index, hand in enumerate(result.hand_landmarks):
-
-                
-                hand_id = str(index)
-
-                if (
-                    result.handedness
-                    and index < len(result.handedness)
-                    and result.handedness[index]
-                ):
-                    hand_id = (
-                        result.handedness[index][0].category_name
-                    )
-
-                active_ids.add(hand_id)
-
-                
-                wrist = hand[0]
-                raw_x = wrist.x
-                raw_y = wrist.y
-
-            
-                if hand_id not in smooth_positions:
-                    smooth_positions[hand_id] = (raw_x, raw_y)
-                else:
-                    old_x, old_y = smooth_positions[hand_id]
-
-                    raw_x = (
-                        EMA_ALPHA * raw_x
-                        + (1 - EMA_ALPHA) * old_x
-                    )
-                    raw_y = (
-                        EMA_ALPHA * raw_y
-                        + (1 - EMA_ALPHA) * old_y
-                    )
-
-                    smooth_positions[hand_id] = (raw_x, raw_y)
-
-                if hand_id not in histories:
-                    histories[hand_id] = deque()
-
-                history = histories[hand_id]
-                history.append((now, raw_x, raw_y))
-
-                while (
-                    history
-                    and now - history[0][0] > WINDOW_SECONDS
-                ):
-                    history.popleft()
-
-                speed, reversals, efficiency = analyze_history(
-                    history
-                )
-
-                if len(history) < MIN_HISTORY_POINTS:
-                    state = "still"
-                else:
-                    state = classify_hand(
-                        speed, reversals, efficiency
-                    )
-
-                visible_states.append(state)
-                previous_states[hand_id] = state
-
-                # Draw landmarks and wrist.
-                for point in hand:
-                    px = int(point.x * width)
-                    py = int(point.y * height)
-
-                    cv2.circle(
-                        frame, (px, py), 2, (0, 220, 0), -1
-                    )
-
-                wx = int(raw_x * width)
-                wy = int(raw_y * height)
-
-                cv2.circle(
-                    frame, (wx, wy), 8, (255, 100, 0), -1
-                )
-
-                cv2.putText(
-                    frame,
-                    f"{hand_id}: {state}",
-                    (max(10, wx - 50), max(25, wy - 15)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.55,
-                    STATES[state][1],
-                    2,
-                )
-
-            
-            for hand_id in list(histories):
-                if hand_id not in active_ids:
-                    histories.pop(hand_id, None)
-                    smooth_positions.pop(hand_id, None)
-                    previous_states.pop(hand_id, None)
-
-            
-            if not visible_states:
-                overall_state = "none"
-            elif "fidgeting" in visible_states:
-                overall_state = "fidgeting"
-            elif "gesturing" in visible_states:
-                overall_state = "gesturing"
+            if self._speed < self.still_limit:
+                state = "still"
+            elif self._speed < self.fidget_limit:
+                state = "gesturing"
             else:
-                overall_state = "still"
+                state = "fidgeting"
 
-            total_frames += 1
-            counts[overall_state] += 1
+        self._durations[state] += dt   # time-based, so frame rate doesn't matter
 
-            visible_pct = (
-                sum(counts[s] for s in
-                    ("still", "gesturing", "fidgeting"))
-                / total_frames * 100
-            )
+        return {
+            "state": state,
+            "label": LABELS[state],
+            "hands_count": len(hands),
+            "speed": round(self._speed, 3),
+            "landmarks": [[(p.x, p.y) for p in hand] for hand in hands],
+        }
 
-            gesture_pct = (
-                counts["gesturing"] / total_frames * 100
-            )
+    def summary(self):
+        """Session results as percentages of time. Safe to call any time."""
+        total = sum(self._durations.values())
+        if total <= 0:
+            return {"total_seconds": 0, "hands_visible_pct": 0,
+                    "gesturing_pct": 0, "still_pct": 0, "fidgeting_pct": 0}
 
-            repetitive_pct = (
-                counts["fidgeting"] / total_frames * 100
-            )
+        def pct(key):
+            return round(self._durations[key] / total * 100, 1)
 
-            label, color = STATES[overall_state]
+        return {
+            "total_seconds": round(total, 1),
+            "hands_visible_pct": round(100 - pct("none"), 1),
+            "gesturing_pct": pct("gesturing"),
+            "still_pct": pct("still"),
+            "fidgeting_pct": pct("fidgeting"),
+        }
 
-           
-            cv2.rectangle(
-                frame, (10, 10), (510, 165), (35, 35, 35), -1
-            )
+    def close(self):
+        self._landmarker.close()
 
-            cv2.putText(
-                frame, label, (25, 42),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2
-            )
+    def __enter__(self):
+        return self
 
-            cv2.putText(
-                frame, f"Hands detected: {len(visible_states)}",
-                (25, 78), cv2.FONT_HERSHEY_SIMPLEX,
-                0.6, (255, 255, 255), 1
-            )
+    def __exit__(self, *exc):
+        self.close()
 
-            cv2.putText(
-                frame, f"Hands visible: {visible_pct:.0f}%",
-                (25, 108), cv2.FONT_HERSHEY_SIMPLEX,
-                0.6, (255, 255, 255), 1
-            )
 
-            cv2.putText(
-                frame, f"Active movement: {gesture_pct:.0f}%",
-                (25, 136), cv2.FONT_HERSHEY_SIMPLEX,
-                0.6, (255, 255, 255), 1
-            )
+def run_demo():
+    """Webcam test with an on-screen display (not used by the app)."""
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("Could not open the webcam.")
+        return
 
-            cv2.putText(
-                frame, f"Repetitive movement: {repetitive_pct:.0f}%",
-                (25, 160), cv2.FONT_HERSHEY_SIMPLEX,
-                0.55, (255, 255, 255), 1
-            )
+    colors = {"none": (0, 165, 255), "still": (255, 200, 0),
+              "gesturing": (0, 200, 0), "fidgeting": (0, 0, 255)}
 
-            cv2.imshow("AI Presentation Coach - Gesture Analysis", frame)
+    with GestureAnalyzer() as analyzer:
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                result = analyzer.analyze_frame(frame)
+                h, w, _ = frame.shape
 
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+                for hand in result["landmarks"]:
+                    for x, y in hand:
+                        cv2.circle(frame, (int(x * w), int(y * h)), 3,
+                                   (0, 255, 0), -1)
 
-    finally:
-        cap.release()
-        landmarker.close()
-        cv2.destroyAllWindows()
+                s = analyzer.summary()
+                cv2.putText(frame, result["label"], (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                            colors[result["state"]], 2)
+                cv2.putText(frame, f"Hands visible: {s['hands_visible_pct']:.0f}%",
+                            (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                            (255, 255, 255), 2)
+                cv2.putText(frame, f"Gesturing: {s['gesturing_pct']:.0f}%",
+                            (20, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                            (255, 255, 255), 2)
+                cv2.putText(frame, f"speed: {result['speed']:.2f}",
+                            (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (255, 255, 0), 2)
+                cv2.imshow("Gestures", frame)
 
-    if total_frames:
-        print("\n--- Gesture Session Summary ---")
-        print(f"Hands visible: {visible_pct:.1f}%")
-        print(f"Active movement: {gesture_pct:.1f}%")
-        print(f"Repetitive movement: {repetitive_pct:.1f}%")
-        print("Note: These are movement estimates, not emotion scores.")
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+        finally:
+            cap.release()
+            cv2.destroyAllWindows()
+            print(json.dumps(analyzer.summary(), indent=2))
 
 
 if __name__ == "__main__":
-    main()
+    run_demo()
 

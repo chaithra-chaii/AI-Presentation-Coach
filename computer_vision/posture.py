@@ -5,15 +5,20 @@ Compares the speaker with THEIR OWN upright pose (calibration), smooths camera
 noise, and flags small changes: uneven shoulders, head tilt, slouching,
 leaning toward the camera, and swaying sideways.
 
+Gesture-aware: while the speaker's hands are active (gesturing or touching the
+face) the shoulder and head-tilt checks are relaxed, hidden ears are ignored,
+and calibration frames are skipped, because moving arms and hands disturb the
+shoulder and ear points.
+
 Use in an app:
     from posture import PostureAnalyzer
 
     analyzer = PostureAnalyzer()
-    analyzer.begin_calibration()             # speaker sits upright
+    analyzer.begin_calibration()             # speaker sits upright, hands down
     ... keep calling analyze_frame(frame) for about 2 seconds ...
     analyzer.finish_calibration()            # True if it worked
 
-    result = analyzer.analyze_frame(frame)   # frame = BGR image (numpy array)
+    result = analyzer.analyze_frame(frame, hands_active=False)
     print(analyzer.summary())
     analyzer.close()
 
@@ -60,6 +65,15 @@ WEIGHTS = {"shoulders_uneven": 14, "head_tilted": 8, "slouching": 22,
            "leaning_forward": 14, "swaying": 8}
 
 MAX_GAP_SECONDS = 0.5
+EAR_VISIBILITY = 0.5
+
+# Gesture handling
+GESTURE_TOL_FACTOR = 1.7     # shoulder/head tolerance multiplier while gesturing
+GESTURE_HOLD = 0.6           # seconds the relaxed mode lasts after hands stop
+GESTURE_SMOOTHING = 0.15     # stronger smoothing while gesturing
+
+# Largest believable change per frame (degrees); bigger jumps are clipped
+MAX_STEP = {"sh_tilt": 5.0, "head_tilt": 6.0}
 
 
 def _angle_deg(p1, p2, w, h):
@@ -92,6 +106,10 @@ def _raw_metrics(lm, w, h):
 
 def _shoulders_visible(lm):
     return min((lm[11].visibility or 0), (lm[12].visibility or 0)) > 0.5
+
+
+def _ears_visible(lm):
+    return min((lm[7].visibility or 0), (lm[8].visibility or 0)) > EAR_VISIBILITY
 
 
 class PostureAnalyzer:
@@ -149,6 +167,7 @@ class PostureAnalyzer:
         self._prev_ts = None
         self._smooth = None
         self._active = set()
+        self._gesture_until = -1e9
 
     @property
     def calibrated(self):
@@ -210,19 +229,26 @@ class PostureAnalyzer:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         return self._landmarker.detect_for_video(mp_image, timestamp_ms), timestamp_ms
 
-    def _smooth_metrics(self, m):
-        """Exponential smoothing: removes jitter, keeps real changes."""
+    def _smooth_metrics(self, m, alpha):
+        """Clip impossible jumps, then smooth: removes jitter, keeps real changes."""
         if self._smooth is None:
             self._smooth = dict(m)
-        else:
-            a = self.smoothing
-            for k, v in m.items():
-                self._smooth[k] = a * v + (1 - a) * self._smooth[k]
+            return self._smooth
+        for k, v in m.items():
+            prev = self._smooth[k]
+            step = MAX_STEP.get(k)
+            if step is not None:
+                v = max(prev - step, min(prev + step, v))
+            self._smooth[k] = alpha * v + (1 - alpha) * prev
         return self._smooth
 
-    def _evaluate(self, m):
+    def _evaluate(self, m, factor=1.0):
         """Returns (problems, deviations, score 0-100)."""
         b = self.baseline
+        tol = dict(self.tol)
+        tol["shoulders_uneven"] *= factor     # relaxed while gesturing
+        tol["head_tilted"] *= factor
+
         devs = {
             "shoulders_uneven": abs(m["sh_tilt"] - (b["sh_tilt"] if b else 0.0)),
             "head_tilted": abs(m["head_tilt"] - (b["head_tilt"] if b else 0.0)),
@@ -238,23 +264,25 @@ class PostureAnalyzer:
         problems = []
         for name in PROBLEMS:
             # Hysteresis: once flagged, stay flagged until clearly back in range
-            limit = self.tol[name] * (0.8 if name in self._active else 1.0)
+            limit = tol[name] * (0.8 if name in self._active else 1.0)
             if devs[name] > limit:
                 problems.append(name)
         self._active = set(problems)
 
-        penalty = sum(WEIGHTS[n] * min(devs[n] / self.tol[n], 1.5)
-                      for n in PROBLEMS)
+        penalty = sum(WEIGHTS[n] * min(devs[n] / tol[n], 1.5) for n in PROBLEMS)
         return problems, devs, max(0.0, 100.0 - penalty)
 
-    def analyze_frame(self, frame_bgr, timestamp_ms=None):
+    def analyze_frame(self, frame_bgr, timestamp_ms=None, hands_active=False):
         """
         Analyse one frame.
+        hands_active : True while the speaker's hands are gesturing or touching
+                       the face (the combined analyzer passes this in)
         Returns a dict: state, label, problems, calibrated, calibrating,
-        score (0-100), metrics, points
+        gesture_mode, score (0-100), metrics, points
         """
         result, ts = self._detect(frame_bgr, timestamp_ms)
         h, w = frame_bgr.shape[:2]
+        t = ts / 1000.0
 
         dt = 0.0
         if self._prev_ts is not None:
@@ -263,6 +291,10 @@ class PostureAnalyzer:
             if gap > MAX_GAP_SECONDS:
                 self._smooth = None
         self._prev_ts = ts
+
+        if hands_active:
+            self._gesture_until = t + GESTURE_HOLD
+        gesturing = t <= self._gesture_until
 
         problems, metrics, points, score = [], None, None, None
 
@@ -276,10 +308,22 @@ class PostureAnalyzer:
                 self._smooth = None
             else:
                 raw = _raw_metrics(lm, w, h)
-                if self._calibrating:
+                ears_ok = _ears_visible(lm)
+
+                # A hand hiding an ear makes the ear points unreliable:
+                # keep the last good ear-based values instead.
+                if not ears_ok and self._smooth is not None:
+                    for k in ("head_tilt", "height", "head_size"):
+                        raw[k] = self._smooth[k]
+
+                # Only calibrate on clean frames (no gesturing, ears visible)
+                if self._calibrating and not gesturing and ears_ok:
                     self._samples.append(dict(raw))
-                m = self._smooth_metrics(raw)
-                problems, devs, score = self._evaluate(m)
+
+                alpha = GESTURE_SMOOTHING if gesturing else self.smoothing
+                m = self._smooth_metrics(raw, alpha)
+                factor = GESTURE_TOL_FACTOR if gesturing else 1.0
+                problems, devs, score = self._evaluate(m, factor)
 
                 metrics = {
                     "shoulder_dev_deg": round(devs["shoulders_uneven"], 1),
@@ -293,7 +337,10 @@ class PostureAnalyzer:
                            ("l_shoulder", 11), ("r_shoulder", 12))}
 
                 if self._calibrating:
-                    state, label = "good", "Calibrating - sit upright, hold still"
+                    state = "good"
+                    label = ("Calibrating - keep hands down and still"
+                             if gesturing else
+                             "Calibrating - sit upright, hold still")
                 elif problems:
                     state = "poor"
                     label = ", ".join(PROBLEM_LABELS[p] for p in problems)
@@ -313,6 +360,7 @@ class PostureAnalyzer:
             "problems": problems,
             "calibrated": self.calibrated,
             "calibrating": self._calibrating,
+            "gesture_mode": gesturing,
             "score": None if score is None else round(score),
             "metrics": metrics,
             "points": points,
@@ -401,7 +449,7 @@ def run_demo():
                                 (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                 (255, 255, 0), 1)
                 if not analyzer.calibrated and not analyzer.calibrating:
-                    cv2.putText(frame, "Sit upright and press C (2 seconds)",
+                    cv2.putText(frame, "Sit upright, hands down, press C (2 seconds)",
                                 (20, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                                 (0, 255, 255), 2)
                 if analyzer.calibrating:

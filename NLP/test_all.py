@@ -71,3 +71,61 @@ idea_speeches = {
 for name, text in idea_speeches.items():
     print("---", name)
     print(content.check_repeated_ideas(text))
+
+
+
+
+# ---------- 5. EXPLANATION QUALITY ----------
+section("EXPLANATION QUALITY")
+
+explanation_speeches = {
+    "well explained": "AI helps doctors because it can read scans faster than people. This means patients get answers sooner. AI also helps students, for example by giving personal practice questions. As a result, learning becomes easier.",
+    "bare statements": "AI is useful. Doctors use it. Students use it. Businesses use it. It saves time.",
+    "very short": "AI is useful.",
+}
+
+for name, text in explanation_speeches.items():
+    print("---", name)
+    print(content.check_explanation_quality(text))
+
+    
+
+# ---------- 6. COMPLETENESS ----------
+section("COMPLETENESS")
+
+key_points = ["healthcare", "education", "risks of AI"]
+
+completeness_speeches = {
+    "covers all": "AI helps healthcare because doctors find diseases earlier. In education, students get personal help. However, there are risks of AI, such as wrong answers.",
+    "misses one": "AI helps doctors in healthcare. It also supports education for students.",
+    "covers none": "I like football. My team won last year.",
+    "no key points given": "AI helps doctors in healthcare.",
+}
+
+for name, text in completeness_speeches.items():
+    print("---", name)
+    if name == "no key points given":
+        print(content.check_completeness(text))
+    else:
+        print(content.check_completeness(text, key_points))
+
+        
+
+# ---------- 7. FULL RESULT ----------
+section("FULL RESULT")
+
+import json
+import feedback_generator as fg
+
+full_speech = "Hello everyone. Today I will talk about artificial intelligence. First, AI helps healthcare because doctors find diseases earlier. Next, in education, students get personal help. However, AI can make mistakes. In conclusion, AI is a useful tool."
+
+result = fg.build_analysis_result(
+    full_speech,
+    "artificial intelligence",
+    key_points=["healthcare", "education", "risks of AI"],
+)
+print("strengths:", json.dumps(result["strengths"], indent=2))
+print("areas_to_improve:", json.dumps(result["areas_to_improve"], indent=2))
+print("suggestions:", json.dumps(result["suggestions"], indent=2))
+print("details keys:", list(result["details"].keys()))
+print("empty speech:", fg.build_analysis_result("", "AI"))

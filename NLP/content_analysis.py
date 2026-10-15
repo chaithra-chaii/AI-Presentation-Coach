@@ -392,3 +392,120 @@ def check_repeated_ideas(text, threshold=0.6):
     }
 
 
+
+EXPLANATION_MARKERS = [
+    "because", "so that", "which means", "this means", "that means",
+    "as a result", "that is why", "this is why", "in other words",
+    "for example", "for instance", "this helps", "which helps",
+    "this allows", "which allows", "due to", "therefore",
+]
+
+
+def check_explanation_quality(text):
+    """Check whether the main ideas are explained, not just stated."""
+    sentences = split_sentences(text)
+    count = len(sentences)
+
+    if count < 3:
+        return {
+            "marker_count": 0,
+            "short_sentence_ratio": 0,
+            "level": "too short to judge",
+            "notes": [],
+        }
+
+    lower = text.lower()
+    marker_count = 0
+    for marker in EXPLANATION_MARKERS:
+        pattern = r"(?<!\w)" + re.escape(marker) + r"(?!\w)"
+        marker_count += len(re.findall(pattern, lower))
+
+    short_sentences = [
+        s for s in sentences
+        if len(re.findall(r"\b[\w']+\b", s)) < 5
+    ]
+    short_ratio = round(len(short_sentences) / count, 2)
+
+    notes = []
+    if marker_count == 0:
+        notes.append(
+            "Explain why your points matter, using words such as "
+            "'because', 'which means' or 'as a result'."
+        )
+    elif marker_count / count < 0.15:
+        notes.append(
+            "Explain more of your points instead of only stating them."
+        )
+
+    if count >= 4 and short_ratio > 0.5:
+        notes.append(
+            "Many of your sentences are very short. Add detail so each "
+            "main idea is fully explained."
+        )
+
+    return {
+        "marker_count": marker_count,
+        "short_sentence_ratio": short_ratio,
+        "level": "good" if not notes else "needs work",
+        "notes": notes,
+    }
+
+
+
+def _stem(word):
+    """Very simple stemming so 'doctors' matches 'doctor'."""
+    for ending in ("ing", "ed", "es", "s"):
+        if word.endswith(ending) and len(word) - len(ending) >= 4:
+            return word[:-len(ending)]
+    return word
+
+
+def check_completeness(text, key_points=None):
+    """Check whether the speech covers the expected key points.
+
+    key_points is a list of short phrases, for example
+    ["healthcare", "education", "risks of AI"].
+    """
+    if not key_points:
+        return {
+            "checked": False,
+            "covered": [],
+            "missing": [],
+            "coverage": None,
+            "notes": [],
+        }
+
+    speech_words = {
+        _stem(w) for w in re.findall(r"[a-z']+", text.lower())
+    }
+
+    covered, missing = [], []
+    for point in key_points:
+        words = [
+            _stem(w) for w in re.findall(r"[a-z']+", point.lower())
+            if w not in IDEA_STOP_WORDS
+        ]
+        if not words:
+            continue
+        matched = sum(1 for w in words if w in speech_words)
+        if matched / len(words) >= 0.6:
+            covered.append(point)
+        else:
+            missing.append(point)
+
+    total = len(covered) + len(missing)
+    coverage = round(len(covered) / total, 2) if total else None
+
+    notes = []
+    if missing:
+        notes.append(
+            "Your speech does not mention: " + ", ".join(missing) + "."
+        )
+
+    return {
+        "checked": True,
+        "covered": covered,
+        "missing": missing,
+        "coverage": coverage,
+        "notes": notes,
+    }

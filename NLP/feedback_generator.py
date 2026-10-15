@@ -261,6 +261,9 @@ def build_analysis_result(text, topic=None, visual_score=None,
         details["transitions"] = transitions
         details["logical_order"] = order
         details["repeated_ideas"] = ideas
+        details["repetition_score"] = content_analysis.calculate_repetition_score(
+            details.get("repetition"), ideas
+        )
         details["explanation_quality"] = explanation
         details["completeness"] = completeness
         details["readability"] = readability
@@ -276,4 +279,5 @@ def build_analysis_result(text, topic=None, visual_score=None,
         "suggestions": feedback["suggestions"],
         "details": details,
         "practice_next": build_practice_plan(details),
+        "repetition_score": details.get("repetition_score", {}).get("score"),
     }

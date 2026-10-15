@@ -225,4 +225,17 @@ print(fg.build_analysis_result(strong_speech, "cybersecurity")["practice_next"])
 print("--- weak speech")
 print(fg.build_analysis_result(weak_speech, "cybersecurity")["practice_next"])
 print("--- empty speech")
-print(fg.build_analysis_result("", "cybersecurity")["practice_next"])
+print(fg.build_analysis_result("", "cybersecurity")["practice_next"])  
+
+
+
+
+# ---------- 14. REPETITION SCORE ----------
+section("REPETITION SCORE")
+
+repetitive_speech = "AI helps doctors read scans. Doctors use AI to read scans. AI helps students learn. AI helps teachers teach. AI helps businesses grow. AI saves time."
+varied_speech = "Hello everyone. Today I will talk about artificial intelligence. It helps doctors read scans faster. Students get personal practice. Businesses save money. In conclusion, AI is a useful tool."
+
+for name, text in {"repetitive": repetitive_speech, "varied": varied_speech, "empty": ""}.items():
+    result = fg.build_analysis_result(text, "artificial intelligence")
+    print(name, "-> repetition_score:", result["repetition_score"])

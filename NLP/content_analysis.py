@@ -833,3 +833,31 @@ def analyze_topic_relevance(text, topic, extra_terms=None):
             "to improve it."
         )
     return result
+
+
+
+
+def calculate_repetition_score(repetition, repeated_ideas):
+    """repetition_score: 0-100, how well unnecessary repetition is avoided.
+
+    Higher = less unnecessary repetition. Lower = excessive repetition.
+    Penalties: repeated words, repeated phrases and repeated ideas.
+    """
+    repetition = repetition or {}
+    word_counts = repetition.get("repeated_words", {})
+    phrase_counts = repetition.get("repeated_phrases", {})
+    idea_pairs = (repeated_ideas or {}).get("count", 0)
+
+    word_penalty = min(40, sum((c - 2) * 5 for c in word_counts.values()))
+    phrase_penalty = min(30, sum((c - 2) * 5 for c in phrase_counts.values()))
+    idea_penalty = min(30, idea_pairs * 15)
+
+    score = 100 - word_penalty - phrase_penalty - idea_penalty
+
+    return {
+        "score": max(0, min(100, score)),
+        "word_penalty": word_penalty,
+        "phrase_penalty": phrase_penalty,
+        "idea_penalty": idea_penalty,
+        "meaning": "0-100. Higher means less unnecessary repetition.",
+    }

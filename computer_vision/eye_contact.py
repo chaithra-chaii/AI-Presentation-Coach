@@ -105,12 +105,12 @@ class EyeContactAnalyzer:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         return self._landmarker.detect_for_video(mp_image, timestamp_ms), timestamp_ms
 
-    def calibrate(self, frame_bgr):
+    def calibrate(self, frame_bgr, timestamp_ms=None):
         """
         Call while the speaker looks straight at the camera.
         Returns True if a face was found and the calibration was saved.
         """
-        result, _ = self._detect(frame_bgr)
+        result, _ = self._detect(frame_bgr, timestamp_ms)
         if not result.face_landmarks:
             return False
         self.baseline_pitch = _head_pitch(result.face_landmarks[0])

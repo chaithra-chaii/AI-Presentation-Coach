@@ -39,6 +39,7 @@ def calculate_content_score(text, topic=None):
         "content_score": round(max(0, min(100, score))),
         "details": {
             "filler_score": filler,
+            "filler_words": nlp.detect_filler_words(text),
             "clarity_score": clarity,
             "topic_relevance": relevance,
             "structure": structure,

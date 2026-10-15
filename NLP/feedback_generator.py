@@ -1,4 +1,5 @@
 import scoring
+import content_analysis
 
 
 def generate_detailed_feedback(analysis):
@@ -75,11 +76,130 @@ def generate_detailed_feedback(analysis):
         "suggestions": suggestions,
     }
 
-
-def build_analysis_result(text, topic=None, visual_score=None):
+def build_analysis_result(text, topic=None, visual_score=None,
+                          audience="general", key_points=None, extra_terms=None):
     """Main function for Member 4: returns the full structured result."""
     analysis = scoring.calculate_content_score(text, topic)
     feedback = generate_detailed_feedback(analysis)
+    details = dict(analysis["details"]) if analysis["details"] else {}
+
+    if text and text.strip():
+        vocabulary = content_analysis.analyze_vocabulary(text, audience)
+        grammar = content_analysis.check_grammar(text)
+        transitions = content_analysis.check_transitions(text)
+        order = content_analysis.check_logical_order(text)
+        ideas = content_analysis.check_repeated_ideas(text)
+        explanation = content_analysis.check_explanation_quality(text)
+        completeness = content_analysis.check_completeness(text, key_points)
+        readability = content_analysis.analyze_readability(text)
+        terms = content_analysis.check_technical_terms(text)
+
+        if vocabulary["notes"]:
+            feedback["areas_to_improve"].append(
+                "Some word choices could be improved."
+            )
+            feedback["suggestions"].extend(vocabulary["notes"])
+
+        for issue in grammar["issues"][:3]:
+            feedback["areas_to_improve"].append(
+                "Grammar: '" + issue["text"] + "'"
+            )
+            feedback["suggestions"].append(issue["suggestion"])
+
+        if transitions["level"] == "good":
+            feedback["strengths"].append(
+                "You connect your ideas with transition phrases."
+            )
+        elif transitions["notes"]:
+            feedback["areas_to_improve"].append(
+                "Your ideas could be connected more smoothly."
+            )
+            feedback["suggestions"].extend(transitions["notes"])
+
+        if order["level"] == "good":
+            feedback["strengths"].append(
+                "Your ideas are presented in a sensible order."
+            )
+        for issue in order["issues"]:
+            feedback["areas_to_improve"].append("Order of ideas.")
+            feedback["suggestions"].append(issue)
+
+        if ideas["notes"]:
+            feedback["areas_to_improve"].append(
+                "Some sentences repeat the same idea."
+            )
+            feedback["suggestions"].extend(ideas["notes"])
+
+        if explanation["level"] == "good":
+            feedback["strengths"].append(
+                "You explain your main ideas, not just state them."
+            )
+        elif explanation["notes"]:
+            feedback["areas_to_improve"].append(
+                "Your main ideas need more explanation."
+            )
+            feedback["suggestions"].extend(explanation["notes"])
+
+        if completeness["checked"]:
+            if not completeness["missing"]:
+                feedback["strengths"].append(
+                    "You cover all the key points."
+                )
+            else:
+                feedback["areas_to_improve"].append(
+                    "Some key points are missing."
+                )
+                feedback["suggestions"].extend(completeness["notes"])
+
+        if readability["level"] == "easy" and not readability["hard_sentences"]:
+            feedback["strengths"].append(
+                "Your language is easy to read and understand."
+            )
+        elif readability["notes"]:
+            feedback["areas_to_improve"].append(
+                "Some sentences are hard to read."
+            )
+            feedback["suggestions"].extend(readability["notes"])
+
+        if terms["unexplained"]:
+            feedback["areas_to_improve"].append(
+                "Some technical terms are not explained."
+            )
+            feedback["suggestions"].extend(terms["notes"])
+        elif terms["explained"]:
+            feedback["strengths"].append(
+                "You explain your technical terms."
+            )
+
+        topic_analysis = None
+        if topic:
+            topic_analysis = content_analysis.analyze_topic_relevance(
+                text, topic, extra_terms
+            )
+            for sentence in topic_analysis["unrelated_sentences"][:2]:
+                start = " ".join(sentence.split()[:8])
+                feedback["areas_to_improve"].append(
+                    "A sentence may be off topic: '" + start + "...'"
+                )
+                feedback["suggestions"].append(
+                    "Remove this sentence or connect it to your topic: '"
+                    + start + "...'"
+                )
+            if topic_analysis["confidence"] == "low":
+                feedback["suggestions"].append(
+                    "The topic relevance estimate is less reliable for "
+                    "this topic. Add keywords for your topic to improve it."
+                )
+        details["topic_analysis"] = topic_analysis
+        details["vocabulary"] = vocabulary
+        details["grammar"] = grammar
+        details["transitions"] = transitions
+        details["logical_order"] = order
+        details["repeated_ideas"] = ideas
+        details["explanation_quality"] = explanation
+        details["completeness"] = completeness
+        details["readability"] = readability
+        details["technical_terms"] = terms
 
     return {
         "content_score": analysis["content_score"],
@@ -89,5 +209,5 @@ def build_analysis_result(text, topic=None, visual_score=None):
         "strengths": feedback["strengths"],
         "areas_to_improve": feedback["areas_to_improve"],
         "suggestions": feedback["suggestions"],
-        "details": analysis["details"],
+        "details": details,
     }

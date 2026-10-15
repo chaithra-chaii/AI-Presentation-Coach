@@ -211,3 +211,18 @@ topic_result = fg.build_analysis_result(mixed_speech, "cybersecurity")
 print("areas_to_improve:", topic_result["areas_to_improve"])
 print("topic_analysis score:", topic_result["details"]["topic_analysis"]["score"])
 print("confidence:", topic_result["details"]["topic_analysis"]["confidence"])
+
+
+
+# ---------- 13. PRACTICE PLAN ----------
+section("PRACTICE PLAN")
+
+strong_speech = "Hello everyone. Today I will talk about cybersecurity. First, strong passwords protect accounts because attackers guess weak ones. For example, a long phrase is harder to guess. Next, multi-factor authentication adds a second check. Finally, updating software closes known security holes. In conclusion, these three habits keep your accounts safe."
+weak_speech = "Cybersecurity is important. Hackers are bad. Um, passwords. Uh, basically yes."
+
+print("--- strong speech")
+print(fg.build_analysis_result(strong_speech, "cybersecurity")["practice_next"])
+print("--- weak speech")
+print(fg.build_analysis_result(weak_speech, "cybersecurity")["practice_next"])
+print("--- empty speech")
+print(fg.build_analysis_result("", "cybersecurity")["practice_next"])

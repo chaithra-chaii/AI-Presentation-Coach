@@ -76,6 +76,71 @@ def generate_detailed_feedback(analysis):
         "suggestions": suggestions,
     }
 
+def build_practice_plan(details):
+    """Choose up to 3 practice exercises based on the actual results."""
+    if not details:
+        return []
+
+    plan = []
+
+    structure = details.get("structure", {})
+    if not structure.get("introduction", True):
+        plan.append(
+            "Practise opening with a greeting and one sentence that "
+            "states your topic."
+        )
+    if not structure.get("conclusion", True):
+        plan.append(
+            "Practise ending with a two-sentence summary of your main "
+            "message."
+        )
+
+    topic_analysis = details.get("topic_analysis")
+    if topic_analysis and topic_analysis["score"] < 70:
+        plan.append(
+            "Practise linking every point back to your topic in one "
+            "sentence."
+        )
+
+    completeness = details.get("completeness", {})
+    if completeness.get("missing"):
+        plan.append(
+            "Practise covering the missing key points: "
+            + ", ".join(completeness["missing"]) + "."
+        )
+
+    if not details.get("examples", {}).get("has_examples", True):
+        plan.append(
+            "Prepare one real example for each main point before you "
+            "present."
+        )
+
+    if details.get("explanation_quality", {}).get("level") == "needs work":
+        plan.append(
+            "For each main point, practise saying why it matters, "
+            "using the word 'because'."
+        )
+
+    if details.get("filler_score", 100) < 70:
+        plan.append(
+            "Practise pausing silently instead of using filler words."
+        )
+
+    if details.get("transitions", {}).get("level") in ("none", "few"):
+        plan.append(
+            "Practise connecting your points with 'First', 'Next' and "
+            "'Finally'."
+        )
+
+    if not plan:
+        plan.append(
+            "Your speech is strong. Practise it again with a new "
+            "example to keep improving."
+        )
+
+    return plan[:3]
+
+
 def build_analysis_result(text, topic=None, visual_score=None,
                           audience="general", key_points=None, extra_terms=None):
     """Main function for Member 4: returns the full structured result."""
@@ -210,4 +275,5 @@ def build_analysis_result(text, topic=None, visual_score=None,
         "areas_to_improve": feedback["areas_to_improve"],
         "suggestions": feedback["suggestions"],
         "details": details,
+        "practice_next": build_practice_plan(details),
     }

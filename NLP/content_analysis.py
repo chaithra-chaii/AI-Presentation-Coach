@@ -105,3 +105,87 @@ def analyze_vocabulary(text, audience="general"):
         "level": level,
         "notes": notes,
     }
+
+
+
+GRAMMAR_RULES = [
+    (r"\b(he|she|it)\s+(don't|dont)\b",
+     "Use 'doesn't' after he, she or it."),
+    (r"\b(we|you|they)\s+is\b",
+     "Use 'are' with we, you or they."),
+    (r"\bi\s+is\b",
+     "Use 'am' with I."),
+    (r"\b(he|she|it)\s+are\b",
+     "Use 'is' with he, she or it."),
+    (r"\b(dont|cant|wont|doesnt|didnt|isnt|arent)\b",
+     "This word is missing an apostrophe."),
+    (r"\bmore\s+(better|faster|easier|bigger|clearer)\b",
+     "Do not use 'more' with a comparative word."),
+    (r"\balot\b",
+     "'alot' should be 'a lot'."),
+]
+
+CONSONANT_SOUND_WORDS = (
+    "univers", "user", "use", "usual", "unit", "uniq", "one", "eu",
+)
+VOWEL_SOUND_WORDS = ("hour", "honest", "honor", "heir")
+
+
+def check_grammar(text):
+    """Find common grammar mistakes using simple rules.
+
+    This is approximate and does not catch every mistake.
+    """
+    issues = []
+    lower = text.lower()
+
+    # Repeated words such as "the the"
+    for match in re.finditer(r"\b([a-z']+)\s+\1\b", lower):
+        word = match.group(1)
+        if word in ("that", "had"):
+            continue
+        issues.append({
+            "text": match.group(0),
+            "issue": "Repeated word '" + word + "'.",
+            "suggestion": "Remove the extra '" + word + "'.",
+        })
+
+    # Lowercase "i" used as a word
+    for match in re.finditer(r"(?<![\w'])i(?![\w'])", text):
+        issues.append({
+            "text": "i",
+            "issue": "'I' should be a capital letter.",
+            "suggestion": "Write 'I' with a capital letter.",
+        })
+
+    # a / an
+    for match in re.finditer(r"\b(a|an)\s+([a-z]+)", lower):
+        article, word = match.group(1), match.group(2)
+        needs_an = word[0] in "aeiou"
+        if word.startswith(CONSONANT_SOUND_WORDS):
+            needs_an = False
+        if word.startswith(VOWEL_SOUND_WORDS):
+            needs_an = True
+        if article == "a" and needs_an:
+            issues.append({
+                "text": match.group(0),
+                "issue": "Use 'an' before '" + word + "'.",
+                "suggestion": "Write 'an " + word + "'.",
+            })
+        elif article == "an" and not needs_an:
+            issues.append({
+                "text": match.group(0),
+                "issue": "Use 'a' before '" + word + "'.",
+                "suggestion": "Write 'a " + word + "'.",
+            })
+
+    # Other common mistakes
+    for pattern, suggestion in GRAMMAR_RULES:
+        for match in re.finditer(pattern, lower):
+            issues.append({
+                "text": match.group(0),
+                "issue": "Possible grammar mistake.",
+                "suggestion": suggestion,
+            })
+
+    return {"issue_count": len(issues), "issues": issues}

@@ -13,20 +13,16 @@ FILLER_WORDS = [
     "ah", "ahh", "eh",
     "hmm", "hmmm", "mm", "mhm",
  
-    # Common single-word fillers
+       # Common single-word fillers
     "actually", "basically", "literally",
     "obviously", "honestly", "seriously",
-    "clearly", "definitely", "probably",
-    "maybe", "perhaps", "apparently",
     "essentially", "technically", "generally",
-    "certainly", "surely", "frankly",
-    "personally", "interestingly",
- 
+    "frankly", "personally", "interestingly",
+    "apparently",
+
     # Informal fillers
-    "like", "well", "so", "anyway",
-    "anyways", "right", "okay", "ok",
-    "yeah", "yes", "no", "yep", "nope",
-    "whatever", "somehow", "somewhat",
+    "like", "anyway", "anyways", "okay", "ok",
+    "yeah", "whatever", "somehow", "somewhat",
  
     # Short expressions
     "you know", "i mean", "i guess",
@@ -172,33 +168,31 @@ def detect_filler_words(text):
  
             # Context checks for words that are often used normally.
             if filler == "like":
+                before_words = text_lower[:start].split()
+                previous_word = before_words[-1] if before_words else ""
                 following = text_lower[end:].lstrip()
- 
-                # Examples: "I like music", "I like chocolate".
-                # These are not automatically filler usage.
-                if re.match(
-                    r"(?:to\b|[a-z]+\b)",
-                    following
+                next_match = re.match(r"([a-z']+)", following)
+                next_word = next_match.group(1) if next_match else ""
+
+                # "I like music", "students like to learn" use "like"
+                # as a normal verb, so they are not fillers.
+                verb_subjects = {
+                    "i", "we", "you", "they", "who", "people",
+                    "students", "would", "do", "don't", "didn't"
+                }
+                common_nouns = {
+                    "music", "chocolate", "books", "reading",
+                    "dancing", "coding", "python", "family",
+                    "rain", "coffee", "tea", "food", "computers",
+                    "laptops", "instagram", "facebook"
+                }
+
+                if (
+                    previous_word in verb_subjects
+                    or next_word == "to"
+                    or next_word in common_nouns
                 ):
-                    next_word_match = re.match(
-                        r"([a-z]+)\b", following
-                    )
-                    if next_word_match:
-                        next_word = next_word_match.group(1)
-                        common_nouns = {
-                            "music", "chocolate", "books",
-                            "reading", "dancing", "coding",
-                            "python", "family", "rain",
-                            "coffee", "tea", "food",
-                            "computers", "laptops",
-                            "instagram", "facebook",
-                            "people", "students"
-                        }
- 
-                        if next_word in common_nouns:
-                            continue
- 
-            if filler == "right":
+                    continue
                 # Avoid counting "turn right" or "right answer"
                 # as a filler word.
                 before = text_lower[:start].rstrip()
@@ -389,26 +383,50 @@ def calculate_overall_score(
 def generate_feedback(
     filler_score,
     clarity_score,
-    overall_score
+    overall_score,
+    filler_counts=None
 ):
     """Generate feedback based on speech scores."""
     feedback = []
- 
+
+    # Name the filler words the speaker actually used (most frequent first).
+    used_fillers = []
+    if filler_counts:
+        used_fillers = [
+            f"'{word}' ({count}x)"
+            for word, count in sorted(
+                filler_counts.items(),
+                key=lambda item: item[1],
+                reverse=True
+            )[:3]
+        ]
+    filler_text = ", ".join(used_fillers)
+
     if filler_score >= 90:
         feedback.append(
             "Good job keeping filler words low."
         )
     elif filler_score >= 70:
-        feedback.append(
-            "Try to reduce filler words such as 'um', "
-            "'basically', and 'you know'."
-        )
+        if filler_text:
+            feedback.append(
+                f"Try to reduce filler words. You used: {filler_text}."
+            )
+        else:
+            feedback.append(
+                "Try to reduce filler words."
+            )
     else:
-        feedback.append(
-            "Practise speaking with fewer filler words "
-            "and use short pauses instead."
-        )
- 
+        if filler_text:
+            feedback.append(
+                f"Practise speaking with fewer filler words, "
+                f"especially {filler_text}. Use short pauses instead."
+            )
+        else:
+            feedback.append(
+                "Practise speaking with fewer filler words "
+                "and use short pauses instead."
+            )
+
     if clarity_score >= 85:
         feedback.append(
             "Your speech structure looks clear."
@@ -421,7 +439,7 @@ def generate_feedback(
         feedback.append(
             "Organize your ideas into clear sentences."
         )
- 
+
     if overall_score >= 85:
         feedback.append(
             "Good work! Keep practising to maintain your progress."
@@ -434,7 +452,7 @@ def generate_feedback(
         feedback.append(
             "Practise again and focus on clarity and organization."
         )
- 
+
     return feedback
  
  
@@ -492,7 +510,7 @@ def detect_repetition(text, min_count=3):
     """Find words and two-word phrases the speaker repeats too often."""
     words = re.findall(r"[a-z']+", text.lower())
  
-    meaningful = [w for w in words if w not in STOP_WORDS and len(w) > 2]
+    meaningful = [w for w in words if w not in STOP_WORDS and len(w) >= 2]
     word_counts = Counter(meaningful)
     repeated_words = {w: c for w, c in word_counts.items() if c >= min_count}
  

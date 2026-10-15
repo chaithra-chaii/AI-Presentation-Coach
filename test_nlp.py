@@ -12,6 +12,7 @@ topic = "artificial intelligence"
 print("clean:", n.clean_speech(speech))
 print("fillers:", n.detect_filler_words(speech))
 print("stats:", n.calculate_text_statistics(speech))
+filler_counts = n.detect_filler_words(speech)
 print("filler score:", n.calculate_filler_score(speech))
 print("clarity score:", n.calculate_clarity_score(speech))
 print("topic relevance:", n.calculate_topic_relevance(speech, topic))
@@ -24,7 +25,7 @@ stats = n.calculate_text_statistics(speech)
 
 overall = n.calculate_overall_score(filler, clarity, topic_score, stats["total_words"])
 print("overall score:", overall)
-print("feedback:", n.generate_feedback(filler, clarity, overall))
+print("feedback:", n.generate_feedback(filler, clarity, overall, filler_counts))
 
 
 repeat_speech = """Technology is important. Technology helps students learn.

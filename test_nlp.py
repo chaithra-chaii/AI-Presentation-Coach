@@ -41,15 +41,6 @@ print("unclear:", c.find_unclear_sentences(long_speech))
 print("examples:", c.check_supporting_examples(long_speech))
 print("no examples:", c.check_supporting_examples("Technology is useful. It is good."))
 
-
-import content_analysis as c
-
-long_speech = """Today I want to talk about how technology has changed the way that students learn in schools and universities across the world because of the internet and many new tools. For example, online classes help students in villages. Technology is useful."""
-
-print("unclear:", c.find_unclear_sentences(long_speech))
-print("examples:", c.check_supporting_examples(long_speech))
-print("no examples:", c.check_supporting_examples("Technology is useful. It is good."))
-
 import scoring as s
 
 sample = """Hello everyone. Today I will talk about artificial intelligence. Basically, AI is changing how we work. For example, doctors use AI to read scans faster and students use it to learn new topics. AI also helps businesses save time and money. In conclusion, AI is a powerful tool and we should use it carefully."""

@@ -1,4 +1,5 @@
 import scoring
+import content_analysis
 
 
 def generate_detailed_feedback(analysis):
@@ -75,11 +76,30 @@ def generate_detailed_feedback(analysis):
         "suggestions": suggestions,
     }
 
-
-def build_analysis_result(text, topic=None, visual_score=None):
+def build_analysis_result(text, topic=None, visual_score=None, audience="general"):
     """Main function for Member 4: returns the full structured result."""
     analysis = scoring.calculate_content_score(text, topic)
     feedback = generate_detailed_feedback(analysis)
+    details = dict(analysis["details"]) if analysis["details"] else {}
+
+    if text and text.strip():
+        vocabulary = content_analysis.analyze_vocabulary(text, audience)
+        grammar = content_analysis.check_grammar(text)
+
+        if vocabulary["notes"]:
+            feedback["areas_to_improve"].append(
+                "Some word choices could be improved."
+            )
+            feedback["suggestions"].extend(vocabulary["notes"])
+
+        for issue in grammar["issues"][:3]:
+            feedback["areas_to_improve"].append(
+                "Grammar: '" + issue["text"] + "'"
+            )
+            feedback["suggestions"].append(issue["suggestion"])
+
+        details["vocabulary"] = vocabulary
+        details["grammar"] = grammar
 
     return {
         "content_score": analysis["content_score"],
@@ -89,5 +109,5 @@ def build_analysis_result(text, topic=None, visual_score=None):
         "strengths": feedback["strengths"],
         "areas_to_improve": feedback["areas_to_improve"],
         "suggestions": feedback["suggestions"],
-        "details": analysis["details"],
+        "details": details,
     }

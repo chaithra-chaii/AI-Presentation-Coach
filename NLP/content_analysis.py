@@ -682,3 +682,154 @@ def check_technical_terms(text, extra_terms=None):
         "unexplained": unexplained,
         "notes": notes,
     }
+
+
+
+
+RELATED_TERMS = {
+    "cybersecurity": [
+        "security", "password", "network", "attack", "hacker", "hack",
+        "malware", "virus", "phishing", "encryption", "firewall",
+        "authentication", "privacy", "breach", "threat", "protect",
+        "ransomware", "software", "account", "data", "digital",
+    ],
+    "artificial intelligence": [
+        "ai", "machine", "learning", "algorithm", "robot", "data",
+        "model", "automation", "neural", "intelligent", "computer",
+        "prediction", "chatbot",
+    ],
+    "climate change": [
+        "climate", "warming", "carbon", "emission", "temperature",
+        "pollution", "fossil", "renewable", "energy", "environment",
+        "weather", "greenhouse", "sea", "sustainable",
+    ],
+    "health": [
+        "doctor", "hospital", "disease", "medicine", "patient",
+        "exercise", "diet", "nutrition", "healthy", "treatment",
+        "fitness", "mental", "sleep",
+    ],
+    "education": [
+        "student", "teacher", "school", "learning", "classroom",
+        "university", "exam", "course", "knowledge", "study", "college",
+    ],
+    "internet": [
+        "online", "website", "web", "network", "browser", "email",
+        "social", "wifi", "download", "digital",
+    ],
+}
+
+NON_CONTENT_PHRASES = [
+    "thank you", "thanks for listening", "thanks everyone",
+]
+
+
+def _analyze_topic_relevance_core(text, topic, extra_terms=None):
+    """Compare the speech with the topic, including related terms.
+
+    extra_terms: optional list of related words for any topic.
+    """
+    empty = {
+        "score": 0,
+        "direct_matches": [],
+        "related_matches": [],
+        "unrelated_sentences": [],
+        "notes": [],
+    }
+    if not text or not text.strip() or not topic or not topic.strip():
+        return empty
+
+    topic_lower = topic.lower()
+    skip_words = IDEA_STOP_WORDS | {"presentation", "topic", "importance"}
+    topic_stems = {
+        _stem(w) for w in re.findall(r"[a-z0-9']+", topic_lower)
+        if w not in skip_words
+    }
+    if not topic_stems:
+        topic_stems = {
+            _stem(w) for w in re.findall(r"[a-z0-9']+", topic_lower)
+        }
+
+    related = list(extra_terms or [])
+    for key, terms in RELATED_TERMS.items():
+        if re.search(r"(?<!\w)" + re.escape(key) + r"(?!\w)", topic_lower):
+            related.extend(terms)
+    related_stems = set()
+    for term in related:
+        for word in re.findall(r"[a-z0-9']+", term.lower()):
+            related_stems.add(_stem(word))
+    related_stems -= topic_stems
+
+    all_words = re.findall(r"[a-z0-9']+", text.lower())
+    speech_stems = {_stem(w) for w in all_words}
+
+    direct = sorted(topic_stems & speech_stems)
+    related_found = sorted(related_stems & speech_stems)
+
+    direct_coverage = len(direct) / len(topic_stems)
+    term_score = max(direct_coverage, min(1.0, len(related_found) / 4))
+
+    sentences = split_sentences(text)
+    skip_phrases = (
+        ORDER_INTRO_PHRASES + ORDER_CONCLUSION_PHRASES + NON_CONTENT_PHRASES
+    )
+    content_sentences = [
+        s for s in sentences if not _phrase_in(s, skip_phrases)
+    ] or sentences
+
+    topic_vocabulary = topic_stems | related_stems
+    unrelated = []
+    relevant_count = 0
+    for sentence in content_sentences:
+        stems = {_stem(w) for w in re.findall(r"[a-z0-9']+", sentence.lower())}
+        if stems & topic_vocabulary:
+            relevant_count += 1
+        else:
+            unrelated.append(sentence)
+
+    sentence_ratio = relevant_count / len(content_sentences)
+    score = round(100 * (0.5 * term_score + 0.5 * sentence_ratio))
+
+    notes = []
+    if score < 50:
+        notes.append(
+            "Your speech does not stay close to the topic. Mention the "
+            "topic and link each point back to it."
+        )
+    if unrelated:
+        notes.append(
+            "Some sentences may be unrelated to the topic. Remove them "
+            "or connect them to the topic."
+        )
+
+    return {
+        "score": max(0, min(100, score)),
+        "direct_matches": direct,
+        "related_matches": related_found,
+        "unrelated_sentences": unrelated,
+        "notes": notes,
+    }
+
+
+
+def analyze_topic_relevance(text, topic, extra_terms=None):
+    """Topic relevance with a confidence label.
+
+    confidence is "high" when the topic has a related-word list or the
+    user supplied extra_terms, and "low" for unknown topics.
+    """
+    result = _analyze_topic_relevance_core(text, topic, extra_terms)
+
+    topic_lower = (topic or "").lower()
+    known = bool(extra_terms) or any(
+        re.search(r"(?<!\w)" + re.escape(key) + r"(?!\w)", topic_lower)
+        for key in RELATED_TERMS
+    )
+
+    result["confidence"] = "high" if known else "low"
+    if not known and topic_lower.strip():
+        result["notes"].append(
+            "This topic has no related-word list, so the relevance "
+            "estimate is less reliable. Add keywords for your topic "
+            "to improve it."
+        )
+    return result

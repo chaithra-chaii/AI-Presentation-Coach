@@ -77,7 +77,7 @@ def generate_detailed_feedback(analysis):
     }
 
 def build_analysis_result(text, topic=None, visual_score=None,
-                          audience="general", key_points=None):
+                          audience="general", key_points=None, extra_terms=None):
     """Main function for Member 4: returns the full structured result."""
     analysis = scoring.calculate_content_score(text, topic)
     feedback = generate_detailed_feedback(analysis)
@@ -171,6 +171,26 @@ def build_analysis_result(text, topic=None, visual_score=None,
                 "You explain your technical terms."
             )
 
+        topic_analysis = None
+        if topic:
+            topic_analysis = content_analysis.analyze_topic_relevance(
+                text, topic, extra_terms
+            )
+            for sentence in topic_analysis["unrelated_sentences"][:2]:
+                start = " ".join(sentence.split()[:8])
+                feedback["areas_to_improve"].append(
+                    "A sentence may be off topic: '" + start + "...'"
+                )
+                feedback["suggestions"].append(
+                    "Remove this sentence or connect it to your topic: '"
+                    + start + "...'"
+                )
+            if topic_analysis["confidence"] == "low":
+                feedback["suggestions"].append(
+                    "The topic relevance estimate is less reliable for "
+                    "this topic. Add keywords for your topic to improve it."
+                )
+        details["topic_analysis"] = topic_analysis
         details["vocabulary"] = vocabulary
         details["grammar"] = grammar
         details["transitions"] = transitions

@@ -163,3 +163,51 @@ for name, text in term_speeches.items():
     print(content.check_technical_terms(text))
 
 print("full speech readability:", content.analyze_readability(full_speech)["average_reading_ease"])
+
+
+
+
+# ---------- 10. TOPIC RELEVANCE (IMPROVED) ----------
+section("TOPIC RELEVANCE (IMPROVED)")
+
+relevance_topic = "cybersecurity"
+
+relevance_speeches = {
+    "uses the word": "Cybersecurity protects computers and networks from digital attacks. Strong password and multi-factor authentication help protect accounts.",
+    "without the word": "Hackers send phishing emails to steal passwords. A firewall and encryption protect your network. Always update your software.",
+    "mixed": "Cybersecurity protects networks from attacks. My favourite football team won the league. Strong passwords protect accounts. The players train every day.",
+    "off topic": "My favourite football team won the league. The players train every day.",
+    "empty": "",
+}
+
+for name, text in relevance_speeches.items():
+    print("---", name)
+    print(content.analyze_topic_relevance(text, relevance_topic))
+
+
+
+# ---------- 11. UNKNOWN TOPIC ----------
+section("UNKNOWN TOPIC")
+
+space_speech = "Rockets carry astronauts to orbit. The rocket launches from a pad. Engineers test every part before the mission."
+
+print("--- unknown topic, no extra keywords")
+print(content.analyze_topic_relevance(space_speech, "space exploration"))
+
+print("--- unknown topic, with extra keywords")
+print(content.analyze_topic_relevance(
+    space_speech, "space exploration",
+    extra_terms=["rocket", "astronaut", "orbit", "mission"],
+))
+
+
+
+# ---------- 12. TOPIC IN FULL RESULT ----------
+section("TOPIC IN FULL RESULT")
+
+mixed_speech = "Hello everyone. Today I will talk about cybersecurity. Strong passwords protect accounts because attackers guess weak ones. My favourite football team won the league. In conclusion, use strong passwords."
+
+topic_result = fg.build_analysis_result(mixed_speech, "cybersecurity")
+print("areas_to_improve:", topic_result["areas_to_improve"])
+print("topic_analysis score:", topic_result["details"]["topic_analysis"]["score"])
+print("confidence:", topic_result["details"]["topic_analysis"]["confidence"])

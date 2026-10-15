@@ -475,16 +475,25 @@ def analyze_speech_structure(text):
     ]
  
     words = text.lower().split()
- 
     introduction_words = [
-        "today", "hello", "good morning", "good afternoon",
-        "firstly", "introduction", "i would like to talk"
+        "today", "hello", "hi everyone", "good morning",
+        "good afternoon", "good evening", "welcome",
+        "my name is", "my topic", "the topic",
+        "firstly", "introduction", "i would like to talk",
+        "i want to talk", "i will talk", "i will explain",
+        "i will present", "i am going to", "i'm going to",
+        "let me start", "let me begin", "i am here to"
     ]
- 
+
     conclusion_words = [
         "finally", "in conclusion", "to conclude",
-        "to sum up", "thank you", "overall"
+        "to sum up", "to summarize", "to summarise",
+        "to wrap up", "in summary", "in short",
+        "the key message", "key takeaway", "main takeaway",
+        "the main point", "thank you", "thanks for listening",
+        "that is all", "overall"
     ]
+    
  
     first_part = " ".join(sentences[:2]).lower()
     last_part = " ".join(sentences[-2:]).lower()

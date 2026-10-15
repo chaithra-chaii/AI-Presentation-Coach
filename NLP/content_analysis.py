@@ -189,3 +189,206 @@ def check_grammar(text):
             })
 
     return {"issue_count": len(issues), "issues": issues}
+
+
+
+TRANSITION_PHRASES = {
+    "sequence": [
+        "first", "firstly", "second", "secondly", "third", "thirdly",
+        "next", "then", "after that", "afterwards", "finally", "lastly",
+    ],
+    "addition": [
+        "also", "in addition", "moreover", "furthermore", "besides",
+    ],
+    "contrast": [
+        "however", "but", "on the other hand", "although", "whereas",
+    ],
+    "cause": [
+        "because", "therefore", "as a result", "thus", "for this reason",
+    ],
+    "example": [
+        "for example", "for instance",
+    ],
+    "summary": [
+        "in conclusion", "to sum up", "to wrap up", "in summary",
+        "to summarize", "to summarise",
+    ],
+}
+
+
+def check_transitions(text):
+    """Check whether the speaker connects ideas with transition words."""
+    lower = text.lower()
+    sentence_count = len(split_sentences(text))
+
+    found = {}
+    total = 0
+    for group, phrases in TRANSITION_PHRASES.items():
+        for phrase in phrases:
+            pattern = r"(?<!\w)" + re.escape(phrase) + r"(?!\w)"
+            count = len(re.findall(pattern, lower))
+            if count:
+                found[phrase] = count
+                total += count
+
+    notes = []
+    if sentence_count < 3:
+        level = "too short to judge"
+    elif total == 0:
+        level = "none"
+        notes.append(
+            "Connect your ideas with transition phrases such as "
+            "'First', 'Next', 'However' and 'Finally'."
+        )
+    elif total / sentence_count < 0.25:
+        level = "few"
+        notes.append(
+            "Add a few more transition phrases so your points flow "
+            "smoothly from one to the next."
+        )
+    else:
+        level = "good"
+
+    return {
+        "transitions_found": found,
+        "total": total,
+        "sentence_count": sentence_count,
+        "level": level,
+        "notes": notes,
+    }
+
+
+
+ORDER_INTRO_PHRASES = [
+    "hello", "hi everyone", "good morning", "good afternoon",
+    "good evening", "welcome", "my name is", "my topic",
+    "i will talk", "i want to talk", "i will explain",
+    "i will present", "i am going to talk", "let me start",
+]
+
+ORDER_CONCLUSION_PHRASES = [
+    "in conclusion", "to conclude", "to sum up", "to wrap up",
+    "in summary", "to summarize", "to summarise", "the key message",
+    "key takeaway", "main takeaway",
+]
+
+SEQUENCE_RANK = {
+    "first": 1, "firstly": 1,
+    "second": 2, "secondly": 2, "next": 2,
+    "third": 3, "thirdly": 3,
+    "finally": 4, "lastly": 4,
+}
+
+
+def _phrase_in(sentence, phrases):
+    lower = sentence.lower()
+    for phrase in phrases:
+        pattern = r"(?<!\w)" + re.escape(phrase) + r"(?!\w)"
+        if re.search(pattern, lower):
+            return True
+    return False
+
+
+def check_logical_order(text):
+    """Check whether the ideas are presented in a sensible order."""
+    sentences = split_sentences(text)
+    count = len(sentences)
+
+    if count < 3:
+        return {
+            "order_ok": True,
+            "level": "too short to judge",
+            "issues": [],
+        }
+
+    half = count / 2
+    issues = []
+
+    intro_positions = [
+        i for i, s in enumerate(sentences)
+        if _phrase_in(s, ORDER_INTRO_PHRASES)
+    ]
+    if intro_positions and intro_positions[0] >= half:
+        issues.append(
+            "Your introduction appears late. Start by greeting the "
+            "audience and stating your topic."
+        )
+
+    conclusion_positions = [
+        i for i, s in enumerate(sentences)
+        if _phrase_in(s, ORDER_CONCLUSION_PHRASES)
+    ]
+    if conclusion_positions and conclusion_positions[0] < half:
+        issues.append(
+            "Your conclusion appears too early. Move the summary to "
+            "the end of your speech."
+        )
+
+    ranks = []
+    for sentence in sentences:
+        for word in re.findall(r"[a-z]+", sentence.lower()):
+            if word in SEQUENCE_RANK:
+                ranks.append(SEQUENCE_RANK[word])
+    if ranks != sorted(ranks):
+        issues.append(
+            "Your 'first / next / finally' points are out of order. "
+            "Check the order of your main points."
+        )
+
+    return {
+        "order_ok": not issues,
+        "level": "good" if not issues else "needs work",
+        "issues": issues,
+    }
+
+
+
+IDEA_STOP_WORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "am", "be", "been",
+    "to", "of", "in", "on", "at", "for", "and", "or", "but", "with",
+    "this", "that", "it", "i", "we", "you", "they", "he", "she",
+    "my", "our", "your", "their", "have", "has", "had", "do", "does",
+    "did", "will", "would", "can", "could", "should", "from", "as",
+    "by", "about", "so", "also", "very", "just",
+}
+
+
+def _idea_words(sentence):
+    words = re.findall(r"[a-z']+", sentence.lower())
+    return {w for w in words if w not in IDEA_STOP_WORDS and len(w) >= 2}
+
+
+def check_repeated_ideas(text, threshold=0.6):
+    """Find sentences that say almost the same thing."""
+    sentences = split_sentences(text)
+    word_sets = [_idea_words(s) for s in sentences]
+
+    repeated = []
+    for i in range(len(sentences)):
+        for j in range(i + 1, len(sentences)):
+            first, second = word_sets[i], word_sets[j]
+            if len(first) < 3 or len(second) < 3:
+                continue
+            similarity = len(first & second) / len(first | second)
+            if similarity >= threshold:
+                repeated.append({
+                    "first": sentences[i],
+                    "second": sentences[j],
+                    "similarity": round(similarity, 2),
+                })
+
+    notes = []
+    if repeated:
+        notes.append(
+            "Some sentences repeat the same idea. Combine them, or "
+            "replace one with a new point or example."
+        )
+
+    return {
+        "repeated_pairs": repeated,
+        "count": len(repeated),
+        "level": "needs work" if repeated else "good",
+        "notes": notes,
+    }
+
+

@@ -509,3 +509,176 @@ def check_completeness(text, key_points=None):
         "coverage": coverage,
         "notes": notes,
     }
+
+
+
+
+def _count_syllables(word):
+    """Rough syllable estimate for English words."""
+    word = word.lower()
+    count = len(re.findall(r"[aeiouy]+", word))
+    if word.endswith("e") and not word.endswith("le") and count > 1:
+        count -= 1
+    return max(1, count)
+
+
+def _reading_ease(sentence):
+    """Flesch reading ease for one sentence (higher = easier)."""
+    words = re.findall(r"[a-z']+", sentence.lower())
+    if not words:
+        return 100.0
+    syllables = sum(_count_syllables(w) for w in words)
+    score = 206.835 - 1.015 * len(words) - 84.6 * (syllables / len(words))
+    return round(score, 1)
+
+
+def analyze_readability(text, long_limit=25):
+    """Judge sentences by length AND readability together.
+
+    A long sentence is only flagged if it is also hard to read.
+    """
+    sentences = split_sentences(text)
+    if not sentences:
+        return {
+            "average_reading_ease": None,
+            "level": "none",
+            "hard_sentences": [],
+            "long_but_clear": [],
+            "notes": [],
+        }
+
+    hard, long_but_clear, scores = [], [], []
+    for sentence in sentences:
+        word_count = len(re.findall(r"[a-z']+", sentence.lower()))
+        ease = _reading_ease(sentence)
+        scores.append(ease)
+
+        if word_count > long_limit:
+            if ease < 50 or word_count > 40:
+                hard.append({
+                    "sentence": sentence,
+                    "word_count": word_count,
+                    "reading_ease": ease,
+                })
+            else:
+                long_but_clear.append({
+                    "sentence": sentence,
+                    "word_count": word_count,
+                    "reading_ease": ease,
+                })
+
+    all_words = re.findall(r"[a-z']+", text.lower())
+    total_syllables = sum(_count_syllables(w) for w in all_words)
+    words_per_sentence = len(all_words) / len(sentences)
+    average = round(
+        206.835
+        - 1.015 * words_per_sentence
+        - 84.6 * (total_syllables / max(1, len(all_words))),
+        1,
+    )
+    if average >= 60:
+        level = "easy"
+    elif average >= 40:
+        level = "medium"
+    else:
+        level = "hard"
+
+    notes = []
+    if hard:
+        notes.append(
+            "Some long sentences are hard to follow. Split them or "
+            "use simpler words."
+        )
+    if level == "hard" and not hard:
+        notes.append(
+            "Your wording is quite complex. Use simpler words where "
+            "you can."
+        )
+
+    return {
+        "average_reading_ease": average,
+        "level": level,
+        "hard_sentences": hard,
+        "long_but_clear": long_but_clear,
+        "notes": notes,
+    }
+
+
+
+TECHNICAL_TERMS = [
+    "algorithm", "neural network", "machine learning", "deep learning",
+    "dataset", "database", "encryption", "blockchain", "cloud computing",
+    "big data", "natural language processing", "computer vision",
+    "api", "framework", "bandwidth", "cybersecurity", "automation",
+    "model training", "artificial neural", "supervised learning",
+]
+
+COMMON_ACRONYMS = {
+    "AI", "TV", "OK", "USA", "UK", "US", "PC", "ID", "PM", "AM",
+}
+
+EXPLANATION_CUES = [
+    "stands for", "which means", "means", "refers to", "in other words",
+    "also known as", "known as", "defined as", "that is", "i.e.",
+    "is a ", "is an ", "are a ", "are the ", "is the ", "is when",
+    "is used to", "is how",
+]
+
+
+def check_technical_terms(text, extra_terms=None):
+    """Check whether technical terms are explained when first used."""
+    sentences = split_sentences(text)
+    if not sentences:
+        return {
+            "terms_found": [],
+            "explained": [],
+            "unexplained": [],
+            "notes": [],
+        }
+
+    terms = {}
+    lower_sentences = [s.lower() for s in sentences]
+
+    for term in TECHNICAL_TERMS + [t.lower() for t in (extra_terms or [])]:
+        pattern = r"(?<!\w)" + re.escape(term) + r"(?!\w)"
+        for index, sentence in enumerate(lower_sentences):
+            if re.search(pattern, sentence):
+                terms[term] = index
+                break
+
+    for acronym in re.findall(r"\b[A-Z]{2,}\b", text):
+        if acronym in COMMON_ACRONYMS:
+            continue
+        for index, sentence in enumerate(sentences):
+            if re.search(r"\b" + acronym + r"\b", sentence):
+                terms.setdefault(acronym, index)
+                break
+
+    explained, unexplained = [], []
+    for term, index in terms.items():
+        window = lower_sentences[index]
+        if index + 1 < len(lower_sentences):
+            window += " " + lower_sentences[index + 1]
+
+        has_cue = any(cue in window for cue in EXPLANATION_CUES)
+        has_brackets = bool(
+            re.search(re.escape(term.lower()) + r"\s*\(", window)
+        )
+        if has_cue or has_brackets:
+            explained.append(term)
+        else:
+            unexplained.append(term)
+
+    notes = []
+    if unexplained:
+        notes.append(
+            "Explain these technical terms for your audience: "
+            + ", ".join(unexplained) + "."
+        )
+
+    return {
+        "terms_found": list(terms.keys()),
+        "explained": explained,
+        "unexplained": unexplained,
+        "notes": notes,
+    }

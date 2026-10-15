@@ -129,3 +129,37 @@ print("areas_to_improve:", json.dumps(result["areas_to_improve"], indent=2))
 print("suggestions:", json.dumps(result["suggestions"], indent=2))
 print("details keys:", list(result["details"].keys()))
 print("empty speech:", fg.build_analysis_result("", "AI"))
+
+
+
+# ---------- 8. READABILITY ----------
+section("READABILITY")
+
+readability_speeches = {
+    "long but easy": "AI helps doctors and it helps students and it helps teachers and it helps farmers and it helps shops and it helps banks and it helps schools every day.",
+    "long and hard": "Contemporary organizations increasingly leverage sophisticated computational methodologies to optimize organizational decision-making and operational efficiency across heterogeneous infrastructure environments while simultaneously maintaining comprehensive regulatory compliance throughout international jurisdictions.",
+    "short and simple": "AI helps doctors. It helps students. It saves time.",
+    "empty": "",
+}
+
+for name, text in readability_speeches.items():
+    print("---", name)
+    print(content.analyze_readability(text))
+
+    
+
+# ---------- 9. TECHNICAL TERMS ----------
+section("TECHNICAL TERMS")
+
+term_speeches = {
+    "explained": "Machine learning means computers learn from data. NLP stands for natural language processing. It helps AI understand text.",
+    "unexplained": "We use machine learning and NLP with an algorithm. The neural network reads the dataset.",
+    "no technical terms": "AI helps doctors. It helps students. It saves time.",
+    "empty": "",
+}
+
+for name, text in term_speeches.items():
+    print("---", name)
+    print(content.check_technical_terms(text))
+
+print("full speech readability:", content.analyze_readability(full_speech)["average_reading_ease"])

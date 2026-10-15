@@ -91,6 +91,8 @@ def build_analysis_result(text, topic=None, visual_score=None,
         ideas = content_analysis.check_repeated_ideas(text)
         explanation = content_analysis.check_explanation_quality(text)
         completeness = content_analysis.check_completeness(text, key_points)
+        readability = content_analysis.analyze_readability(text)
+        terms = content_analysis.check_technical_terms(text)
 
         if vocabulary["notes"]:
             feedback["areas_to_improve"].append(
@@ -149,6 +151,26 @@ def build_analysis_result(text, topic=None, visual_score=None,
                 )
                 feedback["suggestions"].extend(completeness["notes"])
 
+        if readability["level"] == "easy" and not readability["hard_sentences"]:
+            feedback["strengths"].append(
+                "Your language is easy to read and understand."
+            )
+        elif readability["notes"]:
+            feedback["areas_to_improve"].append(
+                "Some sentences are hard to read."
+            )
+            feedback["suggestions"].extend(readability["notes"])
+
+        if terms["unexplained"]:
+            feedback["areas_to_improve"].append(
+                "Some technical terms are not explained."
+            )
+            feedback["suggestions"].extend(terms["notes"])
+        elif terms["explained"]:
+            feedback["strengths"].append(
+                "You explain your technical terms."
+            )
+
         details["vocabulary"] = vocabulary
         details["grammar"] = grammar
         details["transitions"] = transitions
@@ -156,6 +178,8 @@ def build_analysis_result(text, topic=None, visual_score=None,
         details["repeated_ideas"] = ideas
         details["explanation_quality"] = explanation
         details["completeness"] = completeness
+        details["readability"] = readability
+        details["technical_terms"] = terms
 
     return {
         "content_score": analysis["content_score"],
